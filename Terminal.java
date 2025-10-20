@@ -1,6 +1,7 @@
 package CLD;
 
 import java.io.*;
+import java.nio.file.Path;
 import java.util.*;
 
 class Parser {
@@ -73,16 +74,56 @@ public class Terminal {
 
     // abdelrahman
     public void touch(String[] args) {
-        // to be implemented by abdelrahman
+        if(args.length == 0) return;
+        File file = new File(args[0]);
+
+        try {
+            System.out.println(file.createNewFile() ? "new file created !" : "file already exists");
+        } catch (IOException e) {
+            System.err.println("file cannot be created !" + e.getMessage());
+        }
+
     }
 
     public void rm(String[] args) {
-        // to be implemented by abdelrahman
+        if(args.length == 0) return;
+        File file = new File(args[0]);
+        System.out.println(file.delete() ? "deleted successfully" : "file does not exist !");
     }
 
     public void cat(String[] args) {
-        // to be implemented by abdelrahman
+        if (args.length == 0) return;
+
+        try (FileWriter write = new FileWriter("temp.txt")) {
+            for (int i = 0; i < args.length; i++) {
+                File file = new File(args[i]);
+
+                try (Scanner scanner = new Scanner(file)) {
+                    while (scanner.hasNextLine()) {
+                        write.write(scanner.nextLine() + System.lineSeparator());
+                    }
+
+                } catch (FileNotFoundException e) {
+                    System.err.println("File not found" +e.getMessage());
+                }
+            }
+
+        } catch (IOException e) {
+            System.err.println("Error Occurred " + e.getMessage());
+        }
+
+        try (Scanner scanner = new Scanner(new File("temp.txt"))) {
+
+            while (scanner.hasNextLine()) {
+                System.out.println(scanner.nextLine());
+            }
+
+        } catch (FileNotFoundException e) {
+            System.err.println("Error Occurred " + e.getMessage());
+        }
+
     }
+
 
     public void wc(String[] args) {
         // to be implemented by abdelrahman
