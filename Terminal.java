@@ -214,9 +214,14 @@ public class Terminal {
         // to be implemented by abdelrahman
     }
 
-    // Redirection (abdelrahman) , this is the >, >> commands
     public void redirectOutput(String commandOutput, String fileName, boolean append) {
-        // to be implemented by abdelrahman
+        // where this parameters come from (String commandOutput, String fileName, boolean append) ??
+        try (FileWriter writer = new FileWriter(fileName, append)) {
+            writer.write(commandOutput);
+        } catch (IOException e) {
+            System.err.println("Error occurred: " + e.getMessage());
+        }
+
     }
 
     public void chooseCommandAction(String command, String[] args) {
