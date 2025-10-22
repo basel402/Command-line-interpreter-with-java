@@ -3,14 +3,46 @@ package CLD;
 import java.io.*;
 import java.nio.file.Path;
 import java.util.*;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
+import java.util.zip.ZipOutputStream;
+import java.io.BufferedInputStream;
+import java.io.BufferedOutputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.PrintStream;
 
 class Parser {
     private String commandName;
     private String[] args;
+    private String redirectoutputfile = null;
+    private boolean appendredirect = false;
 
     public boolean parse(String input) {
         input = input.trim();
         if (input.isEmpty()) return false;
+
+        redirectoutputfile = null;
+        appendredirect = false;
+
+        int appendindex = input.lastIndexOf(">>");
+        int redirectindex = input.lastIndexOf(">");
+
+        if (appendindex != -1) {
+            String commandpart = input.substring(0, appendindex).trim();
+            redirectoutputfile = input.substring(appendindex + 2).trim();
+            appendredirect = true;
+            input = commandpart;
+        } else if (redirectindex != -1) {
+            String commandpart = input.substring(0, redirectindex).trim();
+            redirectoutputfile = input.substring(redirectindex + 1).trim();
+            appendredirect = false;
+            input = commandpart;
+        }
+
+        if (redirectoutputfile != null && redirectoutputfile.isEmpty()) {
+            System.out.println("Error: Missing redirection file name.");
+            return false;
+        }
 
         String[] tokens = input.split("\\s+");
         commandName = tokens[0];
@@ -30,6 +62,14 @@ class Parser {
 
     public String[] getArgs() {
         return args;
+    }
+
+    public String getredirectfile() {
+        return redirectoutputfile;
+    }
+
+    public boolean isappendredirect() {
+        return appendredirect;
     }
 }
 
@@ -207,21 +247,109 @@ public class Terminal {
     }
 
     public void zip(String[] args) {
-        // to be implemented by abdelrahman
+        if (args.length < 2) {
+            System.out.println("Usage: zip <archive-name.zip> <file1> [file2] ...");
+            return;
+        }
+
+        String zipfilename = args[0];
+        File zipfile = new File(currentDirectory, zipfilename);
+
+        try (FileOutputStream fos = new FileOutputStream(zipfile);
+             ZipOutputStream zos = new ZipOutputStream(fos)) {
+
+            byte[] buffer = new byte[1024];
+            for (int i = 1; i < args.length; i++) {
+                File filetozip = new File(currentDirectory, args[i]);
+
+                if (!filetozip.exists() || !filetozip.isFile()) {
+                    System.out.println("Warning: File not found or is a directory, skipping: " + args[i]);
+                    continue;
+                }
+
+                try (FileInputStream fis = new FileInputStream(filetozip);
+                     BufferedInputStream bis = new BufferedInputStream(fis)) {
+
+                    ZipEntry zipentry = new ZipEntry(filetozip.getName());
+                    zos.putNextEntry(zipentry);
+
+                    int len;
+                    while ((len = bis.read(buffer)) > 0) {
+                        zos.write(buffer, 0, len);
+                    }
+                    zos.closeEntry();
+                    System.out.println("Added: " + args[i]);
+                }
+            }
+            System.out.println("Successfully created zip file: " + zipfilename);
+        } catch (IOException e) {
+            System.out.println("Error creating zip file: " + e.getMessage());
+        }
     }
 
     public void unzip(String[] args) {
-        // to be implemented by abdelrahman
-    }
-
-    public void redirectOutput(String commandOutput, String fileName, boolean append) {
-        // where this parameters come from (String commandOutput, String fileName, boolean append) ??
-        try (FileWriter writer = new FileWriter(fileName, append)) {
-            writer.write(commandOutput);
-        } catch (IOException e) {
-            System.err.println("Error occurred: " + e.getMessage());
+        if (args.length != 1) {
+            System.out.println("Usage: unzip <archive-name.zip>");
+            return;
         }
 
+        String zipfilename = args[0];
+        File zipfile = new File(currentDirectory, zipfilename);
+
+        if (!zipfile.exists() || !zipfile.isFile()) {
+            System.out.println("Error: Zip file not found: " + zipfilename);
+            return;
+        }
+
+        byte[] buffer = new byte[1024];
+        try (FileInputStream fis = new FileInputStream(zipfile);
+             ZipInputStream zis = new ZipInputStream(new BufferedInputStream(fis))) {
+
+            ZipEntry zipentry;
+            while ((zipentry = zis.getNextEntry()) != null) {
+                File newfile = new File(currentDirectory, zipentry.getName());
+
+                String canonicalpath = newfile.getCanonicalPath();
+                String canonicalcurrentdir = currentDirectory.getCanonicalPath();
+                if (!canonicalpath.startsWith(canonicalcurrentdir + File.separator)) {
+                    throw new IOException("Zip slip vulnerability detected! Entry: " + zipentry.getName());
+                }
+
+                if (zipentry.isDirectory()) {
+                    if (!newfile.isDirectory() && !newfile.mkdirs()) {
+                        throw new IOException("Failed to create directory: " + newfile);
+                    }
+                } else {
+                    File parent = newfile.getParentFile();
+                    if (!parent.isDirectory() && !parent.mkdirs()) {
+                        throw new IOException("Failed to create parent directory: " + parent);
+                    }
+
+                    try (FileOutputStream fos = new FileOutputStream(newfile);
+                         BufferedOutputStream bos = new BufferedOutputStream(fos)) {
+                        int len;
+                        while ((len = zis.read(buffer)) > 0) {
+                            bos.write(buffer, 0, len);
+                        }
+                    }
+                }
+                zis.closeEntry();
+                System.out.println("Unzipped: " + newfile.getPath());
+            }
+            System.out.println("Successfully unzipped file: " + zipfilename);
+        } catch (IOException e) {
+            System.out.println("Error unzipping file: " + e.getMessage());
+        }
+    }
+
+    public void redirectoutput(String commandoutput, String filename, boolean append) {
+        File outputfile = new File(currentDirectory, filename);
+
+        try (FileWriter writer = new FileWriter(outputfile, append)) {
+            writer.write(commandoutput);
+        } catch (IOException e) {
+            System.err.println("Error redirecting output: " + e.getMessage());
+        }
     }
 
     public void chooseCommandAction(String command, String[] args) {
@@ -295,8 +423,36 @@ public class Terminal {
 
             String command = terminal.parser.getCommandName();
             String[] cmdArgs = terminal.parser.getArgs();
+            String redirectfile = terminal.parser.getredirectfile();
 
-            terminal.chooseCommandAction(command, cmdArgs);
+            if (redirectfile != null) {
+                ByteArrayOutputStream baos = new ByteArrayOutputStream();
+                PrintStream ps = new PrintStream(baos);
+
+                PrintStream oldout = System.out;
+                PrintStream olderr = System.err;
+
+                System.setOut(ps);
+                System.setErr(ps);
+
+                try {
+                    terminal.chooseCommandAction(command, cmdArgs);
+                } finally {
+                    System.out.flush();
+                    System.err.flush();
+
+                    System.setOut(oldout);
+                    System.setErr(olderr);
+                }
+
+                String output = baos.toString();
+
+                terminal.redirectoutput(output, redirectfile, terminal.parser.isappendredirect());
+
+            } else {
+                terminal.chooseCommandAction(command, cmdArgs);
+            }
         }
     }
 }
+
