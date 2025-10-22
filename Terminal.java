@@ -125,7 +125,7 @@ public class Terminal {
 
     // abdelrahman
     public void touch(String[] args) {
-        if(args.length == 0) return;
+        if(args.length == 0 || args.length > 1) return;
         File file = new File(args[0]);
 
         try {
@@ -137,13 +137,13 @@ public class Terminal {
     }
 
     public void rm(String[] args) {
-        if(args.length == 0) return;
+        if(args.length == 0 || args.length > 1) return;
         File file = new File(args[0]);
         System.out.println(file.delete() ? "deleted successfully" : "file does not exist !");
     }
 
     public void cat(String[] args) {
-        if (args.length == 0) return;
+        if (args.length == 0 || args.length > 2) return;
 
         try (FileWriter write = new FileWriter("temp.txt")) {
             for (int i = 0; i < args.length; i++) {
@@ -177,7 +177,33 @@ public class Terminal {
 
 
     public void wc(String[] args) {
-        // to be implemented by abdelrahman
+        if(args.length == 0 || args.length > 1) return;
+
+        int lineCount = 0;
+        int wordCount = 0;
+        int charCount = 0;
+
+        try {
+            Scanner counter = new Scanner(new File(args[0]));
+
+            while (counter.hasNextLine()) {
+                lineCount++;
+                String data = counter.nextLine();
+                String[] words = data.split(" ");
+                int spaceCount = words.length - 1;
+                charCount += spaceCount;
+                for(String word : words) {
+                    wordCount++;
+                    charCount += word.length();
+                }
+            }
+
+            counter.close();
+        }
+        catch (FileNotFoundException e) {
+            System.out.println("Error Occurred " + e.getMessage());
+        }
+        System.out.println(lineCount + " " + wordCount + " " + charCount + " " + args[0]);
     }
 
     public void zip(String[] args) {
@@ -236,6 +262,8 @@ public class Terminal {
                     unzip(args);
                     break;
                 case "exit":
+                    File file = new File("temp.txt");
+                    file.delete();
                     System.out.println("Exiting CLI...");
                     System.exit(0);
                     break;
