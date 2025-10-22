@@ -41,18 +41,75 @@ public class Terminal {
         parser = new Parser();
         currentDirectory = new File(System.getProperty("user.dir"));
     }
-    // mohamed
+
     public String pwd() {
-        // to be implemented by mohamed
-        return ""; // i wrote this line to not give an error , you have to change it according to ur code
+        return currentDirectory.getAbsolutePath();
     }
 
     public void cd(String[] args) {
-        // to be implemented by mohamed
+        // Case 1: "cd" with no arguments - change to home directory
+        if (args.length == 0) {
+            currentDirectory = new File(System.getProperty("user.home"));
+
+            // Case 2: "cd .." - change to parent directory
+        } else if (args.length == 1 && args[0].equals("..")) {
+            File parent = currentDirectory.getParentFile();
+            if (parent != null) {
+                currentDirectory = parent;
+            } else {
+                System.out.println("Error: Already at root directory.");
+            }
+
+            // Case 3: "cd [path]" - change to specified directory
+        } else if (args.length == 1) {
+            String path = args[0];
+            File newDir = new File(path);
+
+            // Check if the path is absolute. If not, resolve it relative to the current directory.
+            if (!newDir.isAbsolute()) {
+                newDir = new File(currentDirectory, path);
+            }
+
+            // Check if the new path exists and is a directory
+            if (newDir.exists() && newDir.isDirectory()) {
+                // Use getCanonicalFile() to resolve ".." and "." in the path
+                try {
+                    currentDirectory = newDir.getCanonicalFile();
+                } catch (IOException e) {
+                    System.out.println("Error resolving path: " + e.getMessage());
+                }
+            } else {
+                System.out.println("Error: No such directory: " + path);
+            }
+
+            // Error: "cd" with too many arguments
+        } else {
+            System.out.println("Error: cd takes 0 or 1 argument.");
+        }
     }
 
     public void ls() {
-        // to be implemented by mohamed
+        // Get all files and directories in the current directory
+        File[] filesList = currentDirectory.listFiles();
+
+        if (filesList == null) {
+            System.out.println("Error: Cannot list contents of " + currentDirectory.getAbsolutePath());
+            return;
+        }
+
+        // Create a list to hold the names for sorting
+        List<String> names = new ArrayList<>();
+        for (File f : filesList) {
+            names.add(f.getName());
+        }
+
+        // Sort the list alphabetically (as required by the assignment)
+        Collections.sort(names);
+
+        // Print each name
+        for (String name : names) {
+            System.out.println(name);
+        }
     }
 
     // nariman
