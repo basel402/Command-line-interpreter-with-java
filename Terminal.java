@@ -148,21 +148,170 @@ public class Terminal {
 
     // nariman
     public void mkdir(String[] args) {
-        // to be implemented by nariman
+        if (args.length == 0) {
+            System.out.println("mkdir: missing operand");
+            return;
+        }
+        String fullCommand = String.join(" ", args).trim();
+        boolean isQuotedPath = fullCommand.startsWith("\"") && fullCommand.endsWith("\"");
+
+        if (isQuotedPath) {
+            String path = fullCommand.substring(1, fullCommand.length() - 1);
+            File newDir = new File(path);
+
+            if (newDir.exists()) {
+                System.out.println("The directory already exists: " + newDir.getName());
+            } else {
+                boolean created = newDir.mkdirs();
+                if (!created) {
+                    if (!newDir.getParentFile().exists()) {
+                        System.out.println("Error: parent path does not exist -> " + newDir.getParent());
+                    } else {
+                        System.out.println("Error creating directory: " + newDir.getPath());
+                    }
+                }
+            }
+            return;
+        }
+
+        for (String folderName : args) {
+            folderName = folderName.trim();
+            if (folderName.isEmpty()) continue;
+
+            File newDir = new File(currentDirectory, folderName);
+
+            if (!newDir.exists()) {
+                boolean created = newDir.mkdirs();
+                if (!created) {
+                    System.out.println("Error creating directory: " + newDir.getPath());
+                }
+            }
+        }
     }
+
 
     public void rmdir(String[] args) {
-        // to be implemented by nariman
-    }
+        if (args.length == 0) {
+            System.out.println("rmdir: missing operand");
+            return;
+        }
 
+        if (args.length == 1 && args[0].equals("*")) {
+            File dir = currentDirectory;
+            File[] files = dir.listFiles();
+            boolean found = false;
+
+            if (files != null) {
+                for (File f : files) {
+                    if (f.isDirectory() && (f.list() == null || f.list().length == 0)) {
+                        if (f.delete()) {
+                            found = true;
+                        }
+                    }
+                }
+            }
+
+            if (!found) {
+                System.out.println("No empty directories found.");
+            }
+            return;
+        }
+
+        String path = String.join(" ", args).trim();
+        if (path.startsWith("\"") && path.endsWith("\"")) {
+            path = path.substring(1, path.length() - 1);
+        }
+
+        File targetDir;
+        if (path.contains("\\") || path.contains("/")) {
+            targetDir = new File(path);
+        } else {
+            targetDir = new File(currentDirectory, path);
+        }
+
+        if (!targetDir.exists()) {
+            System.out.println("Error: directory does not exist -> " + targetDir.getPath());
+        } else if (!targetDir.isDirectory()) {
+            System.out.println("Error: not a directory -> " + targetDir.getPath());
+        } else if (targetDir.list() != null && targetDir.list().length > 0) {
+            System.out.println("Error: directory not empty -> " + targetDir.getPath());
+        } else {
+            boolean deleted = targetDir.delete();
+            if (!deleted) {
+
+                System.out.println("Error removing directory -> " + targetDir.getPath());
+            }
+        }
+    }
     public void cp(String[] args) {
         // to be implemented by nariman
+        if (args.length != 2) {
+            System.out.println("cp: requires 2 arguments (source and destination)");
+            return;
+        }
+        File sourceFile = new File(currentDirectory, args[0]);
+        File destinationFile = new File(currentDirectory, args[1]);
+        if (!sourceFile.exists ()){
+            System.out.println ("error source doesn't exist ");
+            return;
+        }
+        try (InputStream in = new FileInputStream (sourceFile );
+             OutputStream out = new FileOutputStream (destinationFile)){
+            byte [] buffer = new byte[1024];
+            int length ;
+            while ((length = in.read (buffer))>0){
+                out.write (buffer , 0 , length);
+            }
+
+        }catch (IOException e ){
+            System.out.println ("error copy "+e.getMessage());
+        }
     }
 
     public void cp_r(String[] args) {
         // to be implemented by nariman
-    }
+        if (args.length != 2 ){
+            System.out.println ("cp require two arg ");
+            return ;
+        }
+        File sourceDir = new File (currentDirectory , args[0]);
+        File destDir = new File (currentDirectory , args [1]);
+        if (!sourceDir.exists() || !sourceDir.isDirectory ()){
+            System.out.println ("source dir dosn;t exist ");
+            return ;
+        }
+        if (!destDir.exists()){
+            destDir.mkdirs();
+        }try {
+            copydirRec (sourceDir , new File (destDir , sourceDir.getName ()));
 
+        }catch (IOException e ){
+            System.out.println ("error copy the file ");
+        }
+    }
+    private void copydirRec(File source, File destination) throws IOException {
+        if (source.isDirectory()) {
+            if (!destination.exists()) {
+                destination.mkdirs();
+            }
+
+            String[] children = source.list();
+            if (children != null) {
+                for (String child : children) {
+                    copydirRec(new File(source, child), new File(destination, child));
+                }
+            }
+        } else {
+            try (FileInputStream in = new FileInputStream(source);
+                 FileOutputStream out = new FileOutputStream(destination)) {
+                byte[] buffer = new byte[1024];
+                int length;
+                while ((length = in.read(buffer)) > 0) {
+                    out.write(buffer, 0, length);
+                }
+            }
+        }
+    }
     // abdelrahman
     public void touch(String[] args) {
         if(args.length == 0 || args.length > 1) return;
