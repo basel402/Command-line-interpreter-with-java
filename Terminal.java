@@ -1,5 +1,3 @@
-package CLD;
-
 import java.io.*;
 import java.nio.file.Path;
 import java.util.*;
@@ -565,7 +563,7 @@ public class Terminal {
         System.out.println(" Command Line Interpreter (Type 'exit' to quit)");
 
         while (true) {
-            System.out.print(">> ");
+            System.out.print(terminal.pwd() + " >> ");
             String input = scanner.nextLine();
 
             if (!terminal.parser.parse(input)) continue;
