@@ -1,3 +1,5 @@
+package CLD;
+
 import java.io.*;
 import java.nio.file.Path;
 import java.util.*;
@@ -21,35 +23,64 @@ class Parser {
 
         redirectoutputfile = null;
         appendredirect = false;
+        String commandpart = input;
 
         int appendindex = input.lastIndexOf(">>");
         int redirectindex = input.lastIndexOf(">");
 
         if (appendindex != -1) {
-            String commandpart = input.substring(0, appendindex).trim();
+            commandpart = input.substring(0, appendindex).trim();
             redirectoutputfile = input.substring(appendindex + 2).trim();
             appendredirect = true;
-            input = commandpart;
         } else if (redirectindex != -1) {
-            String commandpart = input.substring(0, redirectindex).trim();
+            commandpart = input.substring(0, redirectindex).trim();
             redirectoutputfile = input.substring(redirectindex + 1).trim();
             appendredirect = false;
-            input = commandpart;
         }
 
+        if (commandpart.isEmpty()) {
+            System.out.println("Error: Invalid command syntax.");
+            return false;
+        }
         if (redirectoutputfile != null && redirectoutputfile.isEmpty()) {
             System.out.println("Error: Missing redirection file name.");
             return false;
         }
 
-        String[] tokens = input.split("\\s+");
-        commandName = tokens[0];
+        List<String> tokens = new ArrayList<>();
+        StringBuilder currentToken = new StringBuilder();
+        boolean inQuote = false;
 
-        if (tokens.length > 1) {
-            args = Arrays.copyOfRange(tokens, 1, tokens.length);
-        } else {
-            args = new String[0];
+        for (int i = 0; i < commandpart.length(); i++) {
+            char c = commandpart.charAt(i);
+
+            if (c == '\"') {
+                inQuote = !inQuote;
+            } else if (c == ' ' && !inQuote) {
+                if (currentToken.length() > 0) {
+                    tokens.add(currentToken.toString());
+                    currentToken.setLength(0);
+                }
+            } else {
+                currentToken.append(c);
+            }
         }
+
+        if (currentToken.length() > 0) {
+            tokens.add(currentToken.toString());
+        }
+
+        if (inQuote) {
+            System.out.println("Error: Unmatched quotes in command.");
+            return false;
+        }
+
+        if (tokens.isEmpty()) {
+            return false;
+        }
+
+        commandName = tokens.get(0);
+        args = tokens.subList(1, tokens.size()).toArray(new String[0]);
 
         return true;
     }
@@ -125,20 +156,57 @@ public class Terminal {
     }
 
     public void ls() {
-        File[] filesList = currentDirectory.listFiles();
+        // This is the original behavior: list current directory
+        ls(new String[0]);
+    }
 
-        if (filesList == null) {
-            System.out.println("Error: Cannot list contents of " + currentDirectory.getAbsolutePath());
+    // Overloaded method to handle 'ls' and 'ls [path]'
+    public void ls(String[] args) {
+        File targetDirectory;
+
+        // If no args, use the current directory
+        if (args.length == 0) {
+            targetDirectory = currentDirectory;
+
+            // If 1 arg, use that as the directory path
+        } else if (args.length == 1) {
+            String path = args[0];
+            targetDirectory = new File(path);
+
+            // Handle relative paths
+            if (!targetDirectory.isAbsolute()) {
+                targetDirectory = new File(currentDirectory, path);
+            }
+
+        } else {
+            System.out.println("Error: ls takes 0 or 1 argument.");
             return;
         }
 
+        // Check if the target directory is valid
+        if (!targetDirectory.exists() || !targetDirectory.isDirectory()) {
+            System.out.println("Error: No such directory: " + targetDirectory.getPath());
+            return;
+        }
+
+        // Get all files and directories in the target directory
+        File[] filesList = targetDirectory.listFiles();
+
+        if (filesList == null) {
+            System.out.println("Error: Cannot list contents of " + targetDirectory.getAbsolutePath());
+            return;
+        }
+
+        // Create a list to hold the names for sorting
         List<String> names = new ArrayList<>();
         for (File f : filesList) {
             names.add(f.getName());
         }
 
+        // Sort the list alphabetically (as required by the assignment)
         Collections.sort(names);
 
+        // Print each name
         for (String name : names) {
             System.out.println(name);
         }
@@ -310,68 +378,130 @@ public class Terminal {
             }
         }
     }
+
+    /**
+     * Helper method for 'zip -r'. Recursively adds files/dirs to the zip stream.
+     */
+    private void addDirectoryToZip(File fileToZip, String parentPath, ZipOutputStream zos) throws IOException {
+        String entryName = parentPath + fileToZip.getName();
+        byte[] buffer = new byte[1024];
+
+        if (fileToZip.isDirectory()) {
+            // Add the directory entry itself
+            zos.putNextEntry(new ZipEntry(entryName + "/"));
+            zos.closeEntry();
+            System.out.println("Adding directory: " + entryName);
+
+            // Recursively add all contents
+            File[] children = fileToZip.listFiles();
+            if (children != null) {
+                for (File child : children) {
+                    addDirectoryToZip(child, entryName + "/", zos);
+                }
+            }
+        } else {
+            // Add a file
+            try (FileInputStream fis = new FileInputStream(fileToZip);
+                 BufferedInputStream bis = new BufferedInputStream(fis)) {
+
+                ZipEntry zipEntry = new ZipEntry(entryName);
+                zos.putNextEntry(zipEntry);
+
+                int len;
+                while ((len = bis.read(buffer)) > 0) {
+                    zos.write(buffer, 0, len);
+                }
+                zos.closeEntry();
+                System.out.println("Added file: " + entryName);
+            }
+        }
+    }
+
     // abdelrahman
     public void touch(String[] args) {
-        if(args.length == 0 || args.length > 1) return;
-        File file = new File(args[0]);
+        if (args.length == 0 || args.length > 1) {
+            System.out.println("Error: touch requires one argument.");
+            return;
+        }
+
+        String path = args[0];
+        File file = new File(path);
+
+        if (!file.isAbsolute()) {
+            file = new File(currentDirectory, path);
+        }
 
         try {
             System.out.println(file.createNewFile() ? "new file created !" : "file already exists");
         } catch (IOException e) {
             System.err.println("file cannot be created !" + e.getMessage());
         }
-
     }
 
     public void rm(String[] args) {
-        if(args.length == 0 || args.length > 1) return;
-        File file = new File(args[0]);
+        if (args.length == 0 || args.length > 1) {
+            System.out.println("Error: rm requires one argument.");
+            return;
+        }
+
+        String path = args[0];
+        File file = new File(path);
+
+        if (!file.isAbsolute()) {
+            file = new File(currentDirectory, path);
+        }
+
         System.out.println(file.delete() ? "deleted successfully" : "file does not exist !");
     }
 
     public void cat(String[] args) {
-        if (args.length == 0 || args.length > 2) return;
+        if (args.length == 0) {
+            System.out.println("Error: cat requires at least one file argument.");
+            return;
+        }
 
-        try (FileWriter write = new FileWriter("temp.txt")) {
-            for (int i = 0; i < args.length; i++) {
-                File file = new File(args[i]);
+        for (String path : args) {
+            File file = new File(path);
 
-                try (Scanner scanner = new Scanner(file)) {
-                    while (scanner.hasNextLine()) {
-                        write.write(scanner.nextLine() + System.lineSeparator());
-                    }
+            // This 'if' block is the fix for the pathing bug.
+            if (!file.isAbsolute()) {
+                file = new File(currentDirectory, path);
+            }
 
-                } catch (FileNotFoundException e) {
-                    System.err.println("File not found" +e.getMessage());
+            // This 'try' block is the fix for the logic.
+            // It reads from the file and prints DIRECTLY to System.out.
+            // It does NOT use "temp.txt".
+            try (Scanner scanner = new Scanner(file)) {
+                while (scanner.hasNextLine()) {
+                    System.out.println(scanner.nextLine());
                 }
+            } catch (FileNotFoundException e) {
+                System.err.println("Error: File not found: " + path);
+                // If one file is not found, print an error but continue to the next one.
             }
-
-        } catch (IOException e) {
-            System.err.println("Error Occurred " + e.getMessage());
         }
-
-        try (Scanner scanner = new Scanner(new File("temp.txt"))) {
-
-            while (scanner.hasNextLine()) {
-                System.out.println(scanner.nextLine());
-            }
-
-        } catch (FileNotFoundException e) {
-            System.err.println("Error Occurred " + e.getMessage());
-        }
-
     }
 
 
     public void wc(String[] args) {
-        if(args.length == 0 || args.length > 1) return;
+        if (args.length == 0 || args.length > 1) {
+            System.out.println("Error: wc requires one argument.");
+            return;
+        }
+
+        String path = args[0];
+        File file = new File(path);
+
+        if (!file.isAbsolute()) {
+            file = new File(currentDirectory, path);
+        }
 
         int lineCount = 0;
         int wordCount = 0;
         int charCount = 0;
 
         try {
-            Scanner counter = new Scanner(new File(args[0]));
+            Scanner counter = new Scanner(file); // <-- Use the corrected 'file' variable
 
             while (counter.hasNextLine()) {
                 lineCount++;
@@ -388,91 +518,144 @@ public class Terminal {
             counter.close();
         }
         catch (FileNotFoundException e) {
-            System.out.println("Error Occurred " + e.getMessage());
+            System.out.println("Error: No such file: " + path);
+            return;
         }
         System.out.println(lineCount + " " + wordCount + " " + charCount + " " + args[0]);
     }
 
     public void zip(String[] args) {
         if (args.length < 2) {
-            System.out.println("Usage: zip <archive-name.zip> <file1> [file2] ...");
+            System.out.println("Usage: zip [-r] <archive-name.zip> <file_or_dir_1> [file_or_dir_2] ...");
             return;
         }
 
-        String zipfilename = args[0];
-        File zipfile = new File(currentDirectory, zipfilename);
+        boolean recursive = false;
+        int argOffset = 0;
 
-        try (FileOutputStream fos = new FileOutputStream(zipfile);
+        // Check for the -r flag
+        if (args[0].equals("-r")) {
+            recursive = true;
+            argOffset = 1; // Shift all other arguments
+            if (args.length < 3) { // Need at least 3 args for -r
+                System.out.println("Usage: zip -r <archive-name.zip> <directory_to_compress>");
+                return;
+            }
+        }
+
+        String zipFilename = args[argOffset];
+        File zipFile = new File(currentDirectory, zipFilename);
+
+        try (FileOutputStream fos = new FileOutputStream(zipFile);
              ZipOutputStream zos = new ZipOutputStream(fos)) {
 
-            byte[] buffer = new byte[1024];
-            for (int i = 1; i < args.length; i++) {
-                File filetozip = new File(currentDirectory, args[i]);
+            for (int i = argOffset + 1; i < args.length; i++) {
+                File fileToZip = new File(args[i]);
+                if (!fileToZip.isAbsolute()) {
+                    fileToZip = new File(currentDirectory, args[i]);
+                }
 
-                if (!filetozip.exists() || !filetozip.isFile()) {
-                    System.out.println("Warning: File not found or is a directory, skipping: " + args[i]);
+                if (!fileToZip.exists()) {
+                    System.out.println("Warning: File or directory not found, skipping: " + args[i]);
                     continue;
                 }
 
-                try (FileInputStream fis = new FileInputStream(filetozip);
-                     BufferedInputStream bis = new BufferedInputStream(fis)) {
+                // If it's a directory and -r is set, use the recursive helper
+                if (fileToZip.isDirectory() && recursive) {
+                    addDirectoryToZip(fileToZip, "", zos);
 
-                    ZipEntry zipentry = new ZipEntry(filetozip.getName());
-                    zos.putNextEntry(zipentry);
+                    // If it's a file, use the original logic
+                } else if (fileToZip.isFile()) {
+                    byte[] buffer = new byte[1024];
+                    try (FileInputStream fis = new FileInputStream(fileToZip);
+                         BufferedInputStream bis = new BufferedInputStream(fis)) {
 
-                    int len;
-                    while ((len = bis.read(buffer)) > 0) {
-                        zos.write(buffer, 0, len);
+                        ZipEntry zipEntry = new ZipEntry(fileToZip.getName());
+                        zos.putNextEntry(zipEntry);
+
+                        int len;
+                        while ((len = bis.read(buffer)) > 0) {
+                            zos.write(buffer, 0, len);
+                        }
+                        zos.closeEntry();
+                        System.out.println("Added: " + args[i]);
                     }
-                    zos.closeEntry();
-                    System.out.println("Added: " + args[i]);
+                } else if (fileToZip.isDirectory() && !recursive) {
+                    System.out.println("Warning: Skipping directory (use -r to include): " + args[i]);
                 }
             }
-            System.out.println("Successfully created zip file: " + zipfilename);
+            System.out.println("Successfully created zip file: " + zipFilename);
         } catch (IOException e) {
             System.out.println("Error creating zip file: " + e.getMessage());
         }
     }
 
     public void unzip(String[] args) {
-        if (args.length != 1) {
-            System.out.println("Usage: unzip <archive-name.zip>");
+        if (args.length == 0) {
+            System.out.println("Usage: unzip <archive-name.zip> [-d /path/to/destination/]");
             return;
         }
 
-        String zipfilename = args[0];
-        File zipfile = new File(currentDirectory, zipfilename);
+        String zipFilename = "";
+        File destinationDir = currentDirectory;
 
-        if (!zipfile.exists() || !zipfile.isFile()) {
-            System.out.println("Error: Zip file not found: " + zipfilename);
+        if (args.length == 1) {
+            zipFilename = args[0];
+
+        } else if (args.length == 3 && args[1].equals("-d")) {
+            zipFilename = args[0];
+            destinationDir = new File(args[2]);
+            if (!destinationDir.isAbsolute()) {
+                destinationDir = new File(currentDirectory, args[2]);
+            }
+
+        } else if (args.length == 3 && args[0].equals("-d")) {
+            zipFilename = args[2];
+            destinationDir = new File(args[1]);
+            if (!destinationDir.isAbsolute()) {
+                destinationDir = new File(currentDirectory, args[1]);
+            }
+
+        } else {
+            System.out.println("Usage: unzip <archive-name.zip> [-d /path/to/destination/]");
             return;
+        }
+
+        File zipFile = new File(currentDirectory, zipFilename);
+        if (!zipFile.exists() || !zipFile.isFile()) {
+            System.out.println("Error: Zip file not found: " + zipFilename);
+            return;
+        }
+
+        if (!destinationDir.exists()) {
+            destinationDir.mkdirs();
         }
 
         byte[] buffer = new byte[1024];
-        try (FileInputStream fis = new FileInputStream(zipfile);
+        try (FileInputStream fis = new FileInputStream(zipFile);
              ZipInputStream zis = new ZipInputStream(new BufferedInputStream(fis))) {
 
-            ZipEntry zipentry;
-            while ((zipentry = zis.getNextEntry()) != null) {
-                File newfile = new File(currentDirectory, zipentry.getName());
+            ZipEntry zipEntry;
+            while ((zipEntry = zis.getNextEntry()) != null) {
+                File newFile = new File(destinationDir, zipEntry.getName());
 
-                String canonicalpath = newfile.getCanonicalPath();
-                String canonicalcurrentdir = currentDirectory.getCanonicalPath();
-                if (!canonicalpath.startsWith(canonicalcurrentdir + File.separator)) {
-                    throw new IOException("Zip slip vulnerability detected! Entry: " + zipentry.getName());
+                String canonicalDestDirPath = destinationDir.getCanonicalPath();
+                String canonicalNewFilePath = newFile.getCanonicalPath();
+                if (!canonicalNewFilePath.startsWith(canonicalDestDirPath + File.separator)) {
+                    throw new IOException("Zip slip vulnerability detected! Entry: " + zipEntry.getName());
                 }
 
-                if (zipentry.isDirectory()) {
-                    if (!newfile.isDirectory() && !newfile.mkdirs()) {
-                        throw new IOException("Failed to create directory: " + newfile);
+                if (zipEntry.isDirectory()) {
+                    if (!newFile.isDirectory() && !newFile.mkdirs()) {
+                        throw new IOException("Failed to create directory: " + newFile);
                     }
                 } else {
-                    File parent = newfile.getParentFile();
+                    File parent = newFile.getParentFile();
                     if (!parent.isDirectory() && !parent.mkdirs()) {
                         throw new IOException("Failed to create parent directory: " + parent);
                     }
 
-                    try (FileOutputStream fos = new FileOutputStream(newfile);
+                    try (FileOutputStream fos = new FileOutputStream(newFile);
                          BufferedOutputStream bos = new BufferedOutputStream(fos)) {
                         int len;
                         while ((len = zis.read(buffer)) > 0) {
@@ -481,9 +664,9 @@ public class Terminal {
                     }
                 }
                 zis.closeEntry();
-                System.out.println("Unzipped: " + newfile.getPath());
+                System.out.println("Unzipped: " + newFile.getPath());
             }
-            System.out.println("Successfully unzipped file: " + zipfilename);
+            System.out.println("Successfully unzipped file: " + zipFilename);
         } catch (IOException e) {
             System.out.println("Error unzipping file: " + e.getMessage());
         }
@@ -509,7 +692,7 @@ public class Terminal {
                     cd(args);
                     break;
                 case "ls":
-                    ls();
+                    ls(args);
                     break;
                 case "mkdir":
                     mkdir(args);
@@ -543,7 +726,7 @@ public class Terminal {
                     break;
                 case "exit":
                     File file = new File("temp.txt");
-                    file.delete();
+                    file.delete(); // This is no longer needed since 'cat' is fixed
                     System.out.println("Exiting CLI...");
                     System.exit(0);
                     break;
@@ -602,4 +785,3 @@ public class Terminal {
         }
     }
 }
-
